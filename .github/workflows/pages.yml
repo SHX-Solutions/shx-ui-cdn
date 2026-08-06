@@ -52,6 +52,20 @@ jobs:
       - name: Auf Pages ausliefern
         id: veroeffentlichen
         uses: actions/deploy-pages@v4
+        with:
+          # Standard sind 10 Minuten — und die reichen hier nicht.
+          #
+          # Genau daran ist es am 06.08.2026 dreimal gescheitert: Die Auslieferung
+          # stand nach zehn Minuten noch auf `deployment_in_progress`, woraufhin der
+          # Schritt sie nicht nur aufgab, sondern aktiv ABBRACH („Canceling Pages
+          # deployment"). Der alte, eingebaute Weg hatte diesen Abbruch nicht — dort
+          # kam der Inhalt deshalb irgendwann doch an, obwohl der Lauf rot war. Das
+          # erklärt das widerspruechliche Bild: Lauf fehlgeschlagen, Inhalt trotzdem
+          # aktuell.
+          #
+          # 30 Minuten. Lieber ein Lauf, der lange dauert, als einer, der die eigene
+          # Auslieferung abwuergt.
+          timeout: 1800000
 
       - name: Nachprüfen, was wirklich ausgeliefert wird
         # Der eigentliche Zweck des Ganzen: nicht melden, sondern nachsehen.
