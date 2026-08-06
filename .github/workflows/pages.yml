@@ -1,0 +1,75 @@
+# Veröffentlicht dieses Repo als Ausweichquelle auf GitHub Pages.
+#
+# Warum es diese Datei gibt: Bis zum 06.08.2026 lief die Veröffentlichung über den
+# eingebauten „legacy"-Bauweg, den GitHub abschafft. Der schlug ab 10:49 Uhr
+# reproduzierbar fehl — `status: errored`, `duration: 0`, Meldung nur „Page build
+# failed". Der Repo-Inhalt war dabei jedes Mal korrekt; nur die Veröffentlichung kam
+# nie an. Ausgeschlossen wurden: Symlinks, fehlende `.nojekyll`, Repo-Größe, privates
+# Repo. Der Weg über Actions umgeht den alten Bauweg vollständig und sagt im
+# Fehlerfall, was los ist, statt einen leeren Fehler zu melden.
+#
+# Hier wird NICHTS gebaut. Das Repo ist ein reines Dateilager: `release-cdn.sh` legt
+# die fertigen Dateien ab und schiebt sie hierher. Der Lauf lädt den Baum unverändert
+# hoch.
+
+name: Ausweichquelle veröffentlichen
+
+on:
+  push:
+    branches: [main]
+  # Von Hand anstoßbar — nützlich, um ohne neue Auslieferung nachzuprüfen,
+  # ob die Veröffentlichung wieder läuft.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Läufe nicht abbrechen: Jede Auslieferung soll ankommen. Bricht man den laufenden
+# ab, kann die Ausweichquelle auf einem älteren Stand stehenbleiben — genau der
+# Zustand, den diese Datei beheben soll.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  veroeffentlichen:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.veroeffentlichen.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      - name: Dateibaum als Artefakt packen
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Auf Pages ausliefern
+        id: veroeffentlichen
+        uses: actions/deploy-pages@v4
+
+      - name: Nachprüfen, was wirklich ausgeliefert wird
+        # Der eigentliche Zweck des Ganzen: nicht melden, sondern nachsehen.
+        # Der frühere Fehler blieb wochenlang unbemerkt, weil niemand geprüft hat,
+        # was am Ende tatsächlich unter der Adresse liegt.
+        run: |
+          set -euo pipefail
+          SOLL="$(node -p "require('./v1/version.json').version")"
+          echo "Soll: $SOLL"
+          for versuch in $(seq 1 20); do
+            IST="$(curl -sf "https://shx-solutions.github.io/shx-ui-cdn/v1/version.json?t=$RANDOM" \
+                   | node -p "try{JSON.parse(require('fs').readFileSync(0)).version}catch(e){''}" || true)"
+            if [ "$IST" = "$SOLL" ]; then
+              echo "Ausweichquelle liefert $IST — stimmt."
+              exit 0
+            fi
+            echo "  Versuch $versuch: liefert '${IST:-nichts}', erwartet $SOLL — warte 15 s"
+            sleep 15
+          done
+          echo "::error::Die Ausweichquelle liefert nach 5 Minuten immer noch nicht $SOLL."
+          exit 1
