@@ -1,10 +1,10 @@
 {
-  "version": "2.4.1",
-  "built": "2026-08-14T06:38:41.523Z",
-  "sha256": "9851408258463c8a",
-  "bytes": 73860,
+  "version": "2.5.0",
+  "built": "2026-08-14T16:15:04.674Z",
+  "sha256": "49235d25728a84c6",
+  "bytes": 76089,
   "integrity": {
-    "shx-ui.css": "sha384-q/sSlnsYZc6LVdifIt6RN0dF6ryhFoASXhzStKuJ7C3a+EhPCdLI2KDQ7GDkEs9T",
-    "shx-ui.min.css": "sha384-9GWLLBLxfDCSF8EdTCwjcKrpqBQ8xjaIu8hnD/36C1B6aJpvJQvziVOGVJL0Ukjh"
+    "shx-ui.css": "sha384-4mlUdOrt6274oePTBbDz34ootb5KItSr2hTPQIfoJz5YtDEvQNi7Bueczc2wHTHM",
+    "shx-ui.min.css": "sha384-t/BCnjjx71X0PE3C4ob2rHRtLpdsWPncCdCvsHvKHcvSukDflVDz4mY/+qm5rYjx"
   }
 }
