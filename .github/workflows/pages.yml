@@ -78,22 +78,75 @@ jobs:
         # melden, sondern nachsehen. Der frühere Fehler blieb wochenlang unbemerkt,
         # weil niemand geprüft hat, was am Ende tatsächlich unter der Adresse liegt.
         #
+        # ⚠️ ER HAT ES BIS ZUM 17.08.2026 TROTZDEM NICHT GEKONNT — er sah am falschen
+        # Ort nach. Hier stand hart `v1/version.json`, während die Bibliothek längst
+        # auf v2 ausgeliefert wird. v1 ist eingefroren, also stimmten Repo und
+        # Ausweichquelle dort auf 1.12.0 überein, und der Schritt meldete beim ersten
+        # Versuch Erfolg. Gemessen an dem Tag:
+        #
+        #   v1  Repo 1.12.0 · Ausweich 1.12.0 · Hauptserver 1.12.0   ← geprüft, stimmt
+        #   v2  Repo 2.5.2  · Ausweich 2.5.1  · Hauptserver 2.5.2    ← NICHT geprüft
+        #
+        # Der Lauf zur Auslieferung 2.5.2 (18:24 Uhr) stand deshalb auf „success",
+        # während die Ausweichquelle eine Fassung zurückhing — samt eines Fehlers im
+        # Wochendiagramm, den 2.5.2 gerade behoben hatte. Ein Wächter, der eine feste
+        # Fassungsnummer kennt, wird beim nächsten Hauptsprung wieder blind. Deshalb
+        # prüft er jetzt JEDEN Baum, der im Repo liegt.
+        #
         # Läuft auch, wenn das Ausliefern „fehlgeschlagen" ist — genau dann ist die
         # Frage ja interessant.
         if: always()
         run: |
           set -euo pipefail
-          SOLL="$(node -p "require('./v1/version.json').version")"
-          echo "Soll: $SOLL"
+          BASIS="https://shx-solutions.github.io/shx-ui-cdn"
+
+          # Alle Versionsbäume, die im Repo liegen — nicht der eine, der mal der
+          # richtige war. Kommt eines Tages v3 dazu, ist es ohne Zutun mit dabei.
+          shopt -s nullglob
+          OFFEN=()
+          for datei in v*/version.json; do OFFEN+=("$(dirname "$datei")"); done
+          shopt -u nullglob
+
+          if [ "${#OFFEN[@]}" -eq 0 ]; then
+            echo "::error::Kein einziger v*/version.json im Repo. Entweder hat das Ablegen"
+            echo "::error::nicht funktioniert, oder die Ordnerstruktur hat sich geändert —"
+            echo "::error::in beiden Fällen darf dieser Lauf nicht grün sein."
+            exit 1
+          fi
+          echo "Zu prüfen: ${OFFEN[*]}"
+
+          version_live() {
+            curl -sf "$BASIS/$1/version.json?t=$RANDOM$RANDOM" 2>/dev/null \
+              | node -p "try{JSON.parse(require('fs').readFileSync(0)).version}catch(e){''}" 2>/dev/null || true
+          }
+
           for versuch in $(seq 1 20); do
-            IST="$(curl -sf "https://shx-solutions.github.io/shx-ui-cdn/v1/version.json?t=$RANDOM" \
-                   | node -p "try{JSON.parse(require('fs').readFileSync(0)).version}catch(e){''}" || true)"
-            if [ "$IST" = "$SOLL" ]; then
-              echo "Ausweichquelle liefert $IST — stimmt."
+            NOCH_OFFEN=()
+            for baum in "${OFFEN[@]}"; do
+              SOLL="$(node -p "require('./$baum/version.json').version")"
+              IST="$(version_live "$baum")"
+              if [ "$IST" = "$SOLL" ]; then
+                echo "  ✓ $baum liefert $SOLL"
+              else
+                echo "  · $baum liefert '${IST:-nichts}', erwartet $SOLL"
+                NOCH_OFFEN+=("$baum")
+              fi
+            done
+            OFFEN=("${NOCH_OFFEN[@]+"${NOCH_OFFEN[@]}"}")
+            if [ "${#OFFEN[@]}" -eq 0 ]; then
+              echo "Ausweichquelle vollständig auf dem Stand des Repos."
               exit 0
             fi
-            echo "  Versuch $versuch: liefert '${IST:-nichts}', erwartet $SOLL — warte 15 s"
-            sleep 15
+            if [ "$versuch" -lt 20 ]; then
+              echo "  Versuch $versuch — warte 15 s"
+              sleep 15
+            fi
           done
-          echo "::error::Die Ausweichquelle liefert nach 5 Minuten immer noch nicht $SOLL."
+
+          # Kein „warnen und trotzdem grün": Eine Ausweichquelle, die eine alte Fassung
+          # ausliefert, ist schlimmer als gar keine — sie springt genau dann ein, wenn
+          # der Hauptserver weg ist, und bringt dann leise alte Fehler zurück.
+          for baum in "${OFFEN[@]}"; do
+            echo "::error::$baum: Ausweichquelle liefert nach 5 Minuten nicht $(node -p "require('./$baum/version.json').version"). Lauf erneut anstoßen (Actions → „Ausweichquelle veröffentlichen\" → Run workflow); das hat am 17.08.2026 gereicht."
+          done
           exit 1
